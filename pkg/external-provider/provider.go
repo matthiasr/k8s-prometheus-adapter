@@ -18,6 +18,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/directxman12/k8s-prometheus-adapter/pkg/metrics"
+	apierr "k8s.io/apimachinery/pkg/api/errors"
+
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	pmodel "github.com/prometheus/common/model"
@@ -25,7 +28,6 @@ import (
 
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 
-	apierr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/metrics/pkg/apis/external_metrics"
 
@@ -38,6 +40,8 @@ type externalPrometheusProvider struct {
 	metricConverter MetricConverter
 
 	seriesRegistry ExternalSeriesRegistry
+
+	serviceMetrics *metrics.ServiceMetrics
 }
 
 func (p *externalPrometheusProvider) GetExternalMetric(namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
@@ -45,10 +49,16 @@ func (p *externalPrometheusProvider) GetExternalMetric(namespace string, metricS
 
 	if err != nil {
 		klog.Errorf("unable to generate a query for the metric: %v", err)
+		if p.serviceMetrics != nil {
+			p.serviceMetrics.Errors.WithLabelValues("internal").Inc()
+		}
 		return nil, apierr.NewInternalError(fmt.Errorf("unable to fetch metrics"))
 	}
 
 	if !found {
+		if p.serviceMetrics != nil {
+			p.serviceMetrics.Errors.WithLabelValues("not_found").Inc()
+		}
 		return nil, provider.NewMetricNotFoundError(p.selectGroupResource(namespace), info.Metric)
 	}
 	// Here is where we're making the query, need to be before here xD
@@ -57,6 +67,9 @@ func (p *externalPrometheusProvider) GetExternalMetric(namespace string, metricS
 	if err != nil {
 		klog.Errorf("unable to fetch metrics from prometheus: %v", err)
 		// don't leak implementation details to the user
+		if p.serviceMetrics != nil {
+			p.serviceMetrics.Errors.WithLabelValues("internal").Inc()
+		}
 		return nil, apierr.NewInternalError(fmt.Errorf("unable to fetch metrics"))
 	}
 	return p.metricConverter.Convert(info, queryResults)
@@ -78,14 +91,15 @@ func (p *externalPrometheusProvider) selectGroupResource(namespace string) schem
 }
 
 // NewExternalPrometheusProvider creates an ExternalMetricsProvider capable of responding to Kubernetes requests for external metric data
-func NewExternalPrometheusProvider(promClient prom.Client, namers []naming.MetricNamer, updateInterval time.Duration) (provider.ExternalMetricsProvider, Runnable) {
+func NewExternalPrometheusProvider(promClient prom.Client, namers []naming.MetricNamer, updateInterval time.Duration, serviceMetrics *metrics.ServiceMetrics) (provider.ExternalMetricsProvider, Runnable) {
 	metricConverter := NewMetricConverter()
 	basicLister := NewBasicMetricLister(promClient, namers, updateInterval)
 	periodicLister, _ := NewPeriodicMetricLister(basicLister, updateInterval)
-	seriesRegistry := NewExternalSeriesRegistry(periodicLister)
+	seriesRegistry := NewExternalSeriesRegistry(periodicLister, serviceMetrics)
 	return &externalPrometheusProvider{
 		promClient:      promClient,
 		seriesRegistry:  seriesRegistry,
 		metricConverter: metricConverter,
+		serviceMetrics:  serviceMetrics,
 	}, periodicLister
 }

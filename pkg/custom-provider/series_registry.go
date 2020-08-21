@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/directxman12/k8s-prometheus-adapter/pkg/metrics"
+
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/labels"
@@ -67,6 +69,9 @@ type seriesInfo struct {
 
 // overridableSeriesRegistry is a basic SeriesRegistry
 type basicSeriesRegistry struct {
+	// registry name is used for metrics &c
+	name string
+
 	mu sync.RWMutex
 
 	// info maps metric info to information about the corresponding series
@@ -75,6 +80,8 @@ type basicSeriesRegistry struct {
 	metrics []provider.CustomMetricInfo
 
 	mapper apimeta.RESTMapper
+
+	serviceMetrics *metrics.ServiceMetrics
 }
 
 func (r *basicSeriesRegistry) SetSeries(newSeriesSlices [][]prom.Series, namers []naming.MetricNamer) error {
@@ -123,6 +130,9 @@ func (r *basicSeriesRegistry) SetSeries(newSeriesSlices [][]prom.Series, namers 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.serviceMetrics != nil {
+		r.serviceMetrics.RegistryMetrics.WithLabelValues(r.name).Set(float64(len(newMetrics)))
+	}
 	r.info = newInfo
 	r.metrics = newMetrics
 
