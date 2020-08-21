@@ -16,6 +16,8 @@ package provider
 import (
 	"sync"
 
+	"github.com/directxman12/k8s-prometheus-adapter/pkg/metrics"
+
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
@@ -34,6 +36,9 @@ type ExternalSeriesRegistry interface {
 
 // overridableSeriesRegistry is a basic SeriesRegistry
 type externalSeriesRegistry struct {
+	// registry name is used for metrics &c
+	name string
+
 	// We lock when reading/writing metrics, and metricsInfo to prevent inconsistencies.
 	mu sync.RWMutex
 
@@ -41,6 +46,8 @@ type externalSeriesRegistry struct {
 	metrics []provider.ExternalMetricInfo
 	// metricsInfo is a lookup from a metric to SeriesConverter for the sake of generating queries
 	metricsInfo map[string]seriesInfo
+
+	serviceMetrics *metrics.ServiceMetrics
 }
 
 type seriesInfo struct {
@@ -52,10 +59,11 @@ type seriesInfo struct {
 }
 
 // NewExternalSeriesRegistry creates an ExternalSeriesRegistry driven by the data from the provided MetricLister.
-func NewExternalSeriesRegistry(lister MetricListerWithNotification) ExternalSeriesRegistry {
+func NewExternalSeriesRegistry(lister MetricListerWithNotification, serviceMetrics *metrics.ServiceMetrics) ExternalSeriesRegistry {
 	var registry = externalSeriesRegistry{
-		metrics:     make([]provider.ExternalMetricInfo, 0),
-		metricsInfo: map[string]seriesInfo{},
+		metrics:        make([]provider.ExternalMetricInfo, 0),
+		metricsInfo:    map[string]seriesInfo{},
+		serviceMetrics: serviceMetrics,
 	}
 
 	lister.AddNotificationReceiver(registry.filterAndStoreMetrics)
@@ -100,6 +108,9 @@ func (r *externalSeriesRegistry) filterAndStoreMetrics(result MetricUpdateResult
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.serviceMetrics != nil {
+		r.serviceMetrics.RegistryMetrics.WithLabelValues(r.name).Set(float64(len(apiMetricsCache)))
+	}
 	r.metrics = apiMetricsCache
 	r.metricsInfo = rawMetricsCache
 
