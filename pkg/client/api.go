@@ -25,8 +25,10 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"time"
 
+	"github.com/directxman12/k8s-prometheus-adapter/pkg/metrics"
 	"github.com/prometheus/common/model"
 	"k8s.io/klog"
 )
@@ -47,6 +49,7 @@ type GenericAPIClient interface {
 type httpAPIClient struct {
 	client  *http.Client
 	baseURL *url.URL
+	metrics *metrics.ServiceMetrics
 }
 
 func (c *httpAPIClient) Do(ctx context.Context, verb, endpoint string, query url.Values) (APIResponse, error) {
@@ -59,14 +62,21 @@ func (c *httpAPIClient) Do(ctx context.Context, verb, endpoint string, query url
 	}
 	req.WithContext(ctx)
 
+	start := time.Now()
 	resp, err := c.client.Do(req)
+	elapsed := time.Since(start)
 	defer func() {
 		if resp != nil {
 			resp.Body.Close()
 		}
 	}()
 
+	c.metrics.OutgoingLatency.WithLabelValues(c.baseURL.String(), endpoint).Observe(float64(elapsed) / float64(time.Second))
+
 	if err != nil {
+		// see "Unofficial error codes" https://en.wikipedia.org/wiki/List_of_HTTP_status_codes#Unofficial_codes
+		// 598 (Informal convention) Network read timeout error
+		c.metrics.OutgoingRequests.WithLabelValues(c.baseURL.String(), endpoint, "598").Inc()
 		return APIResponse{}, err
 	}
 
@@ -75,6 +85,7 @@ func (c *httpAPIClient) Do(ctx context.Context, verb, endpoint string, query url
 	}
 
 	code := resp.StatusCode
+	c.metrics.OutgoingRequests.WithLabelValues(c.baseURL.String(), endpoint, strconv.Itoa(code)).Inc()
 
 	// codes that aren't 2xx, 400, 422, or 503 won't return JSON objects
 	if code/100 != 2 && code != 400 && code != 422 && code != 503 {
@@ -113,10 +124,11 @@ func (c *httpAPIClient) Do(ctx context.Context, verb, endpoint string, query url
 }
 
 // NewGenericAPIClient builds a new generic Prometheus API client for the given base URL and HTTP Client.
-func NewGenericAPIClient(client *http.Client, baseURL *url.URL) GenericAPIClient {
+func NewGenericAPIClient(client *http.Client, baseURL *url.URL, metrics *metrics.ServiceMetrics) GenericAPIClient {
 	return &httpAPIClient{
 		client:  client,
 		baseURL: baseURL,
+		metrics: metrics,
 	}
 }
 
@@ -128,20 +140,22 @@ const (
 
 // queryClient is a Client that connects to the Prometheus HTTP API.
 type queryClient struct {
-	api GenericAPIClient
+	api     GenericAPIClient
+	metrics *metrics.ServiceMetrics
 }
 
 // NewClientForAPI creates a Client for the given generic Prometheus API client.
-func NewClientForAPI(client GenericAPIClient) Client {
+func NewClientForAPI(client GenericAPIClient, metrics *metrics.ServiceMetrics) Client {
 	return &queryClient{
-		api: client,
+		api:     client,
+		metrics: metrics,
 	}
 }
 
 // NewClient creates a Client for the given HTTP client and base URL (the location of the Prometheus server).
-func NewClient(client *http.Client, baseURL *url.URL) Client {
-	genericClient := NewGenericAPIClient(client, baseURL)
-	return NewClientForAPI(genericClient)
+func NewClient(client *http.Client, baseURL *url.URL, metrics *metrics.ServiceMetrics) Client {
+	genericClient := NewGenericAPIClient(client, baseURL, metrics)
+	return NewClientForAPI(genericClient, metrics)
 }
 
 func (h *queryClient) Series(ctx context.Context, interval model.Interval, selectors ...Selector) ([]Series, error) {

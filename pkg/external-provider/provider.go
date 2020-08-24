@@ -47,6 +47,8 @@ type externalPrometheusProvider struct {
 func (p *externalPrometheusProvider) GetExternalMetric(namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
 	selector, found, err := p.seriesRegistry.QueryForMetric(namespace, info.Metric, metricSelector)
 
+	p.serviceMetrics.Lookups.WithLabelValues("external_metric").Inc()
+
 	if err != nil {
 		klog.Errorf("unable to generate a query for the metric: %v", err)
 		if p.serviceMetrics != nil {

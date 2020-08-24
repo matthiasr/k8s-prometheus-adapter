@@ -12,11 +12,14 @@ import (
 const MetricsNamespace = "adapter"
 
 type ServiceMetrics struct {
-	PrometheusUp    prometheus.Gauge
-	RegistryMetrics *prometheus.GaugeVec
-	Errors          *prometheus.CounterVec
-	Rules           *prometheus.GaugeVec
-	Registry        *prometheus.Registry
+	PrometheusUp     prometheus.Gauge
+	RegistryMetrics  *prometheus.GaugeVec
+	Lookups          *prometheus.CounterVec
+	Errors           *prometheus.CounterVec
+	OutgoingLatency  *prometheus.HistogramVec
+	OutgoingRequests *prometheus.CounterVec
+	Rules            *prometheus.GaugeVec
+	Registry         *prometheus.Registry
 }
 
 func NewMetrics() (*ServiceMetrics, error) {
@@ -33,6 +36,12 @@ func NewMetrics() (*ServiceMetrics, error) {
 			Help:      "number of metrics entries in cache registry",
 		}, []string{"registry"}),
 
+		Lookups: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: MetricsNamespace,
+			Name:      "lookups_total",
+			Help:      "number of metric lookups",
+		}, []string{"method"}),
+
 		Errors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: MetricsNamespace,
 			Name:      "errors_total",
@@ -44,6 +53,19 @@ func NewMetrics() (*ServiceMetrics, error) {
 			Name:      "roles",
 			Help:      "number of configured rules",
 		}, []string{"type"}),
+
+		OutgoingLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: MetricsNamespace,
+			Name:      "outgoing_prometheus_request_latency_seconds",
+			Help:      "Prometheus client query latency in seconds.  Broken down by target prometheus server and endpoint",
+			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 10),
+		}, []string{"server", "endpoint"}),
+
+		OutgoingRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: MetricsNamespace,
+			Name:      "outgoing_prometheus_requests_total",
+			Help:      "Prometheus client query requests.  Broken down by target prometheus server and status code",
+		}, []string{"server", "endpoint", "status"}),
 
 		Registry: prometheus.NewRegistry(),
 	}

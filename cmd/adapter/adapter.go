@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/metrics-server/pkg/api"
 
 	prom "github.com/directxman12/k8s-prometheus-adapter/pkg/client"
-	mprom "github.com/directxman12/k8s-prometheus-adapter/pkg/client/metrics"
 	adaptercfg "github.com/directxman12/k8s-prometheus-adapter/pkg/config"
 	cmprov "github.com/directxman12/k8s-prometheus-adapter/pkg/custom-provider"
 	extprov "github.com/directxman12/k8s-prometheus-adapter/pkg/external-provider"
@@ -107,9 +106,8 @@ func (cmd *PrometheusAdapter) makePromClient() (prom.Client, error) {
 		httpClient.Transport = transport.NewBearerAuthRoundTripper(string(data), httpClient.Transport)
 	}
 
-	genericPromClient := prom.NewGenericAPIClient(httpClient, baseURL)
-	instrumentedGenericPromClient := mprom.InstrumentGenericAPIClient(genericPromClient, baseURL.String())
-	return prom.NewClientForAPI(instrumentedGenericPromClient), nil
+	genericPromClient := prom.NewGenericAPIClient(httpClient, baseURL, cmd.ServiceMetrics)
+	return prom.NewClientForAPI(genericPromClient, cmd.ServiceMetrics), nil
 }
 
 func (cmd *PrometheusAdapter) addFlags() {

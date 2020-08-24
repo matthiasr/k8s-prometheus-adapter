@@ -162,9 +162,12 @@ func (p *prometheusProvider) buildQuery(info provider.CustomMetricInfo, namespac
 }
 
 func (p *prometheusProvider) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
+	p.serviceMetrics.Lookups.WithLabelValues("get_metric_by_name").Inc()
+
 	// construct a query
 	queryResults, err := p.buildQuery(info, name.Namespace, metricSelector, name.Name)
 	if err != nil {
+		p.serviceMetrics.Errors.WithLabelValues("internal").Inc()
 		return nil, err
 	}
 
@@ -202,6 +205,8 @@ func (p *prometheusProvider) GetMetricByName(name types.NamespacedName, info pro
 }
 
 func (p *prometheusProvider) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+	p.serviceMetrics.Lookups.WithLabelValues("get_metric_by_selector").Inc()
+
 	// fetch a list of relevant resource names
 	resourceNames, err := helpers.ListObjectNames(p.mapper, p.kubeClient, namespace, selector, info)
 	if err != nil {
@@ -216,6 +221,8 @@ func (p *prometheusProvider) GetMetricBySelector(namespace string, selector labe
 	// construct the actual query
 	queryResults, err := p.buildQuery(info, namespace, metricSelector, resourceNames...)
 	if err != nil {
+		p.serviceMetrics.Errors.WithLabelValues("internal").Inc()
+
 		return nil, err
 	}
 
