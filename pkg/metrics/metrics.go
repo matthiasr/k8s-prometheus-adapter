@@ -71,11 +71,14 @@ func NewMetrics() (*ServiceMetrics, error) {
 	}
 
 	for collectorName, collector := range map[string]prometheus.Collector{
-		"Go collector":     prometheus.NewGoCollector(),
-		"Prometheus Up":    ret.PrometheusUp,
-		"Registry Metrics": ret.RegistryMetrics,
-		"Errors":           ret.Errors,
-		"Rules":            ret.Rules,
+		"Go collector":      prometheus.NewGoCollector(),
+		"Prometheus Up":     ret.PrometheusUp,
+		"Registry Metrics":  ret.RegistryMetrics,
+		"Lookups":           ret.Lookups,
+		"Errors":            ret.Errors,
+		"Rules":             ret.Rules,
+		"Outgoing Requests": ret.OutgoingRequests,
+		"Outgoing Latency":  ret.OutgoingLatency,
 	} {
 		if err := ret.Registry.Register(collector); err != nil {
 			return nil, fmt.Errorf("during registration of %q: %v", collectorName, err)
