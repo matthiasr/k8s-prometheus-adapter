@@ -58,7 +58,7 @@ func NewMetrics() (*ServiceMetrics, error) {
 			Namespace: MetricsNamespace,
 			Name:      "outgoing_prometheus_request_latency_seconds",
 			Help:      "Prometheus client query latency in seconds.  Broken down by target prometheus server and endpoint",
-			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 10),
+			Buckets:   []float64{0.0005, 0.001, 0.02, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10},
 		}, []string{"server", "endpoint"}),
 
 		OutgoingRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
